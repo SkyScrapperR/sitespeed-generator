@@ -84,4 +84,4 @@ A faster drop-in replacement for make.fun's static site generator `makefun-site 
 | # | Commit SHA | Title | Time (WITA) | Status | CPU Time / Notes |
 |---|------------|-------|-------------|--------|------------------|
 | 1 | `b2fb4362a767` | Baseline Entry | 2026-11-23 18:50 | Committed & Pushed | 913 ms (Baseline) |
-| 2 | Pending | FastSite 2.0 | 2026-11-23 23:30 | Ready to submit | 225 ms (~4.05x faster, 3/3 passed) |
+| 2 | `0eabeb6` | FastSite 2.0 | 2026-11-23 23:30 | Committed & Pushed | 225 ms (~4.05x faster, 3/3 passed) |
