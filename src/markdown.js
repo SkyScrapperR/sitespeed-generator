@@ -267,33 +267,49 @@ function endsParagraph(line) {
 }
 
 export function renderMarkdown(src, env) {
-  const lines = src.split('\n');
   const ids = new Set();
   const toc = [];
   let html = '';
   let excerpt = null;
-  let i = 0;
-  const len = lines.length;
+  const srcLen = src.length;
+  let pos = 0;
 
-  while (i < len) {
-    const line = lines[i];
-    if (line.length === 0 || (line.charCodeAt(0) <= 32 && isBlank(line))) {
-      i++;
+  function nextLine(start) {
+    const nl = src.indexOf('\n', start);
+    return nl === -1 ? srcLen : nl;
+  }
+
+  while (pos < srcLen) {
+    let nl = nextLine(pos);
+    let blank = true;
+    for (let k = pos; k < nl; k++) {
+      const c = src.charCodeAt(k);
+      if (c !== 32 && c !== 9) { blank = false; break; }
+    }
+    if (blank) {
+      pos = nl + 1;
       continue;
     }
 
-    const c0 = line.charCodeAt(0);
+    const c0 = src.charCodeAt(pos);
 
     // Fence: ```
-    if (c0 === 96 && line.startsWith('```')) {
+    if (c0 === 96 && src.startsWith('```', pos)) {
+      const line = src.slice(pos, nl);
       const lang = parseFenceOpen(line);
       if (lang !== null) {
         let codeBody = '';
-        i++;
-        while (i < len && !isFenceClose(lines[i])) {
-          codeBody += `${fastEscapeHtml(lines[i++])}\n`;
+        pos = nl + 1;
+        while (pos < srcLen) {
+          const nextNl = nextLine(pos);
+          const l = src.slice(pos, nextNl);
+          if (isFenceClose(l)) {
+            pos = nextNl + 1;
+            break;
+          }
+          codeBody += `${fastEscapeHtml(l)}\n`;
+          pos = nextNl + 1;
         }
-        i++;
         const cls = lang === '' ? '' : ` class="language-${fastEscapeHtml(lang)}"`;
         html += `<pre><code${cls}>${codeBody}</code></pre>\n`;
         continue;
@@ -302,6 +318,7 @@ export function renderMarkdown(src, env) {
 
     // Heading: #
     if (c0 === 35) {
+      const line = src.slice(pos, nl);
       const heading = headingOf(line);
       if (heading !== null) {
         const id = uniqueSlug(slugify(heading.text), ids);
@@ -310,32 +327,38 @@ export function renderMarkdown(src, env) {
         if (heading.depth === 2 || heading.depth === 3) {
           toc.push({ level: heading.depth, id, html: hHtml });
         }
-        i++;
+        pos = nl + 1;
         continue;
       }
     }
 
     // HR: --- or ***
-    if ((c0 === 45 || c0 === 42) && isHr(line)) {
-      html += '<hr>\n';
-      i++;
-      continue;
+    if (c0 === 45 || c0 === 42) {
+      const line = src.slice(pos, nl);
+      if (isHr(line)) {
+        html += '<hr>\n';
+        pos = nl + 1;
+        continue;
+      }
     }
 
     // Blockquote: >
     if (c0 === 62) {
       const qLines = [];
-      while (i < len && lines[i].charCodeAt(0) === 62) {
-        const l = lines[i++];
+      while (pos < srcLen && src.charCodeAt(pos) === 62) {
+        const nextNl = nextLine(pos);
+        const l = src.slice(pos, nextNl);
         const stripped = l.charCodeAt(1) === 32 ? l.slice(2) : l.slice(1);
         const trimmed = trimLine(stripped);
         if (trimmed !== '') qLines.push(trimmed);
+        pos = nextNl + 1;
       }
       html += qLines.length === 0 ? '<blockquote>\n</blockquote>\n' : `<blockquote>\n<p>${inline(qLines.join('\n'), env)}</p>\n</blockquote>\n`;
       continue;
     }
 
     // List: bullet or ordered
+    const line = src.slice(pos, nl);
     const bullet = parseBullet(line);
     const ordered = bullet === null ? parseOrdered(line) : null;
     if (bullet !== null || ordered !== null) {
@@ -343,28 +366,32 @@ export function renderMarkdown(src, env) {
       const items = [];
       if (isOrdered) {
         items.push([trimLine(ordered.text)]);
-        i++;
-        while (i < len) {
-          const m = parseOrdered(lines[i]);
+        pos = nl + 1;
+        while (pos < srcLen) {
+          const nextNl = nextLine(pos);
+          const l = src.slice(pos, nextNl);
+          const m = parseOrdered(l);
           if (m !== null) {
             items.push([trimLine(m.text)]);
-            i++;
-          } else if (isContinued(lines[i])) {
-            items[items.length - 1].push(trimLine(lines[i]));
-            i++;
+            pos = nextNl + 1;
+          } else if (isContinued(l)) {
+            items[items.length - 1].push(trimLine(l));
+            pos = nextNl + 1;
           } else break;
         }
       } else {
         items.push([trimLine(bullet)]);
-        i++;
-        while (i < len) {
-          const m = parseBullet(lines[i]);
+        pos = nl + 1;
+        while (pos < srcLen) {
+          const nextNl = nextLine(pos);
+          const l = src.slice(pos, nextNl);
+          const m = parseBullet(l);
           if (m !== null) {
             items.push([trimLine(m)]);
-            i++;
-          } else if (isContinued(lines[i])) {
-            items[items.length - 1].push(trimLine(lines[i]));
-            i++;
+            pos = nextNl + 1;
+          } else if (isContinued(l)) {
+            items[items.length - 1].push(trimLine(l));
+            pos = nextNl + 1;
           } else break;
         }
       }
@@ -379,9 +406,13 @@ export function renderMarkdown(src, env) {
 
     // Paragraph
     let pText = trimLine(line);
-    i++;
-    while (i < len && !endsParagraph(lines[i])) {
-      pText += '\n' + trimLine(lines[i++]);
+    pos = nl + 1;
+    while (pos < srcLen) {
+      const nextNl = nextLine(pos);
+      const l = src.slice(pos, nextNl);
+      if (endsParagraph(l)) break;
+      pText += '\n' + trimLine(l);
+      pos = nextNl + 1;
     }
     const pHtml = inline(pText, env);
     if (excerpt === null) excerpt = pHtml;
